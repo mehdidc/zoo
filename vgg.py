@@ -232,7 +232,7 @@ def image_transform(inpt, img_sz,
                     angle=0,
                     rand_gen=None,
                     invert_image=False,
-                    nearest=False):
+                    nearest=True):
     assert zoom > 0
     h = w = img_sz
 
@@ -287,17 +287,17 @@ def image_transform(inpt, img_sz,
     if nearest:
         vert = T.iround(transy)
         horz = T.iround(transx)
-        output = inpt[:, vert, horz]
+        output = inpt[:, :, vert, horz]
     else:
         topp = T.cast(transy, 'int32')
         left = T.cast(transx, 'int32')
         fraction_y = T.cast(transy - topp, theano.config.floatX)
         fraction_x = T.cast(transx - left, theano.config.floatX)
 
-        output = inpt[:, topp, left] * (1 - fraction_y) * (1 - fraction_x) + \
-                    inpt[:, topp, left + 1] * (1 - fraction_y) * fraction_x + \
-                    inpt[:, topp + 1, left] * fraction_y * (1 - fraction_x) + \
-                    inpt[:, topp + 1, left + 1] * fraction_y * fraction_x
+        output = inpt[:, :, topp, left] * (1 - fraction_y) * (1 - fraction_x) + \
+                inpt[:, :, topp, left + 1] * (1 - fraction_y) * fraction_x + \
+                inpt[:, :, topp + 1, left] * fraction_y * (1 - fraction_x) + \
+                inpt[:, :, topp + 1, left + 1] * fraction_y * fraction_x
 
     # Now add some noise
     if pflip:
@@ -306,7 +306,7 @@ def image_transform(inpt, img_sz,
     return output
 
 from lasagne.easy import BatchIterator, get_batch_slice
-class BlendingBatchIterator(BatchIterator):
+class MyBatchIterator(BatchIterator):
 
      def transform(self, batch_index, V):
         assert self.batch_size is not None
@@ -322,7 +322,13 @@ class BlendingBatchIterator(BatchIterator):
         d = OrderedDict()
         X_transformed = V["X"][batch_slice]
         y_transformed = V["y"][batch_slice]
-        X_transformed = image_transform(X_transformed, X_transformed.shape[2], self.model.rng)
+        X_transformed = image_transform(X_transformed, 32, self.model.rng,
+                                        translation=1,
+                                        zoom=1,
+                                        magnitude=1,
+                                        sigma=1,
+                                        pflip=1,
+                                        angle=10)
         d["X"] = X_transformed
         d["y"] = y_transformed
         return d
@@ -352,7 +358,8 @@ if __name__ == "__main__":
     batch_optimizer = MyBatchOptimizer(
         verbose=1, max_nb_epochs=100,
         batch_size=BATCH_SIZE,
-        optimization_procedure=(updates.adagrad, {"learning_rate":1e-3})
+        optimization_procedure=(updates.adagrad, {"learning_rate":1e-3}),
+        whole_dataset_in_device=True
     )
 
     input_variables = OrderedDict()
@@ -378,6 +385,7 @@ if __name__ == "__main__":
         loss_function,
         functions=functions,
         batch_optimizer=batch_optimizer,
+        batch_iterator=MyBatchIterator(),
     )
 
     data = Cifar100(which='all')
