@@ -201,7 +201,8 @@ def build_model_small(input_width=32, input_height=32, output_dim=100,
         nonlinearity=lasagne.nonlinearities.rectify,
     )
 
-    l_hidden1_dropout = lasagne.layers.DropoutLayer(l_hidden1, p=0.5)
+    #l_hidden1_dropout = lasagne.layers.DropoutLayer(l_hidden1, p=0.5)
+    l_hidden1_dropout = l_hidden1
     #l_hidden1_dropout = l_hidden1
 
     l_hidden2 = lasagne.layers.DenseLayer(
@@ -209,7 +210,8 @@ def build_model_small(input_width=32, input_height=32, output_dim=100,
         num_units=4096,
         nonlinearity=lasagne.nonlinearities.rectify,
     )
-    l_hidden2_dropout = lasagne.layers.DropoutLayer(l_hidden2, p=0.5)
+    l_hidden2_dropout = l_hidden2
+     #l_hidden2_dropout = lasagne.layers.DropoutLayer(l_hidden2, p=0.5)
      #l_hidden2_dropout = l_hidden1_dropout
 
     l_out = lasagne.layers.DenseLayer(
@@ -358,7 +360,7 @@ if __name__ == "__main__":
     batch_optimizer = MyBatchOptimizer(
         verbose=1, max_nb_epochs=100,
         batch_size=BATCH_SIZE,
-        optimization_procedure=(updates.adagrad, {"learning_rate":1e-3}),
+        optimization_procedure=(updates.adagrad, {"learning_rate":1e-2}),
         whole_dataset_in_device=True
     )
 
@@ -375,10 +377,8 @@ if __name__ == "__main__":
     def loss_function(model, tensors):
         X = tensors["X"]
         y = tensors["y"]
-        print(y.dtype, y.ndim)
-        print(X.dtype, X.ndim)
         y_hat, = model.get_output(X)
-        return -T.log(y_hat[:, y]).mean()
+        return T.nnet.categorical_crossentropy(y_hat, y).mean()
 
     nnet = Capsule(
         input_variables, model,
