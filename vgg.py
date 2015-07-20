@@ -9,7 +9,7 @@ import theano
 import theano.tensor as T
 from theano.sandbox import rng_mrg
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 
 
 import numpy as np
@@ -49,7 +49,7 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
     rng = rng_mrg.MRG_RandomStreams(1234)
 
     l_in = lasagne.layers.InputLayer(
-        shape=(batch_size, 3, input_width, input_height),
+        shape=(None, 3, input_width, input_height),
     )
 
     if not dimshuffle:
@@ -334,14 +334,17 @@ def build_model_very_small(input_width=32, input_height=32, output_dim=100,
 from skimage.transform import AffineTransform
 import numpy as np
 from skimage import transform as tf
+from realtime_augmentation import random_perturbation_transform, fast_warp
+
 def Transform(X, rng):
-    translation = rng.randint(-2, 2, size=2)
-    scale = rng.uniform(1, 1.4, size=2)
-    rotation = rng.uniform(-np.pi/6, np.pi/6)
-    affine_transform = AffineTransform(translation=translation, scale=scale, rotation=rotation)
+    zoom_range = (1.0, 1.1)
+    rotation_range = (0, 360)
+    shear_range = (0, 0)
+    translation_range = (-4, 4)
+    transf = random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=True)
     X_trans = np.zeros(X.shape, dtype="float32")
     for i in range(X.shape[0]):
-       X_trans[i] = tf.warp(X[i], affine_transform)
+       X_trans[i] = fast_warp(X[i], transf, output_shape=(32, 32))
     return X_trans
 
 
@@ -362,11 +365,17 @@ class MyBatchIterator(BatchIterator):
         d = OrderedDict()
         X = V["X"][batch_slice]
         y = V["y"][batch_slice]
-        #X_transformed = Transform(X.transpose(0, 3, 2, 1), np.random).transpose((0, 3, 2, 1))
-        #d["X"] = np.concatenate([X, X_transformed], axis=0)
-        #d["y"] = np.concatenate([y, y], axis=0)
-        d["X"] = X
-        d["y"] = y
+
+        X_list = [X]
+        y_list = [y]
+        for i in range(5):
+            X_transformed = Transform(X.transpose(0, 3, 2, 1), np.random).transpose((0, 3, 2, 1))
+            X_list.append(X_transformed)
+            y_list.append(y)
+
+        d["X"] = np.concatenate(X_list, axis=0)
+        d["y"] = np.concatenate(y_list, axis=0)
+        d["X"], d["y"] = shuffle(d["X"], d["y"])
         return d
 
 if __name__ == "__main__":
@@ -374,15 +383,20 @@ if __name__ == "__main__":
     from lasagne.datasets.cifar10 import Cifar10
     from sklearn.utils import shuffle
     from sklearn.cross_validation import train_test_split
+
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler, MinMaxScaler
     import numpy as np
     from collections import OrderedDict
     import time
+    import os
 
     from bokeh.plotting import cursession, figure, show, output_server
     output_server("cifar10", url="http://onevm-60.lal.in2p3.fr:15000")
+    print(cursession().__dict__)
     p = figure()
-    p.line(np.arange(0, 100), np.arange(0, 100)*2, name="learning_curve_train")
-    p.line(np.arange(0, 100), np.arange(0, 100)*2, name="learning_curve_valid")
+    p.line([], [], name="learning_curve_train", legend="learning curve train", color="blue")
+    p.line([], [], name="learning_curve_valid", legend="learning curve valid", color="green")
     show(p)
     renderer = p.select(dict(name="learning_curve_train"))
     curve_train_ds = renderer[0].data_source
@@ -405,10 +419,11 @@ if __name__ == "__main__":
             s = s[0:1000]
             status["accuracy_valid"] = (nnet.predict(X_test[s])==y_test[s]).mean()
             status["error_valid"] = 1 - status["accuracy_valid"]
-            #curve_train_ds.data["x"].append(status["epoch"])
-            #curve_valid_ds.data["x"].append(status["epoch"])
-            #curve_train_ds.data["y"].append(status["accuracy_train"])
-            #curve_valid_ds.data["y"].append(status["accuracy_valid"])
+            
+            curve_train_ds.data["x"].append(status["epoch"])
+            curve_valid_ds.data["x"].append(status["epoch"])
+            curve_train_ds.data["y"].append(1-status["accuracy_train"])
+            curve_valid_ds.data["y"].append(1-status["accuracy_valid"])
             cursession().store_objects(curve_train_ds)
             cursession().store_objects(curve_valid_ds)
             decay = np.array((1 - 5.0e-6), dtype="float32")
@@ -421,7 +436,7 @@ if __name__ == "__main__":
         verbose=2, max_nb_epochs=1000,
         batch_size=BATCH_SIZE,
         optimization_procedure=(updates.momentum, {"learning_rate": learning_rate, "momentum": 0.9}),
-        whole_dataset_in_device=True,
+        #whole_dataset_in_device=True,
         patience_stat="error_valid",
         patience_nb_epochs=20,
         patience_progression_rate_threshold=1.14,
@@ -452,22 +467,33 @@ if __name__ == "__main__":
         batch_optimizer=batch_optimizer,
         batch_iterator=MyBatchIterator(),
     )
+    
+    if not os.path.exists("data_cached.npz"):
+        data = Cifar10(batch_indexes=[1, 2, 3, 4, 5, 6])
+        data.load()
+        imshape = (data.X.shape[0], 3, 32, 32)
+        
+        X = data.X.reshape(imshape).astype(np.float32) / 255.
+        y = data.y
+        y = y.astype(np.int32)
 
-    data = Cifar10(batch_indexes=[1, 2, 3, 4, 5, 6])
-    data.load()
-    imshape = (data.X.shape[0], 3, 32, 32)
+        X, y = shuffle(X, y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        
+        pipeline = make_pipeline(ZCA(), StandardScaler())
+        pipeline.fit(X_train)
 
-    X = data.X.reshape(imshape).astype(np.float32)
-    y = data.y
-    y = y.astype(np.int32)
+        X_train = pipeline.transform(X_train).reshape((X_train.shape[0], 3, 32, 32))
+        X_test = pipeline.transform(X_test).reshape((X_test.shape[0], 3, 32, 32))
 
-    X, y = shuffle(X, y)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-
-    zca = ZCA()
-    zca.fit(X_train)
-    X_train = zca.transform(X_train).reshape((X_train.shape[0], 3, 32, 32))
-    X_test = zca.transform(X_test).reshape((X_test.shape[0], 3, 32, 32))
-
+        np.savez("data_cached.npz", 
+                X_train=X_train, y_train=y_train, 
+                X_test=X_test, y_test=y_test)
+    else:
+        data = np.load("data_cached.npz")
+        X_train, y_train, X_test, y_test = (data["X_train"],
+                                           data["y_train"],
+                                           data["X_test"],
+                                           data["y_test"])
+        print(X_train.max())
     nnet.fit(X=X_train, y=y_train)
