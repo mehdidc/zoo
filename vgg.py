@@ -390,18 +390,21 @@ if __name__ == "__main__":
     from collections import OrderedDict
     import time
     import os
+    
+    use_bokeh = True
 
-    from bokeh.plotting import cursession, figure, show, output_server
-    output_server("cifar10", url="http://onevm-60.lal.in2p3.fr:15000")
-    print(cursession().__dict__)
-    p = figure()
-    p.line([], [], name="learning_curve_train", legend="learning curve train", color="blue")
-    p.line([], [], name="learning_curve_valid", legend="learning curve valid", color="green")
-    show(p)
-    renderer = p.select(dict(name="learning_curve_train"))
-    curve_train_ds = renderer[0].data_source
-    renderer = p.select(dict(name="learning_curve_valid"))
-    curve_valid_ds = renderer[0].data_source
+    if use_bokeh:
+        from bokeh.plotting import cursession, figure, show, output_server
+        output_server("cifar10", url="http://onevm-60.lal.in2p3.fr:15000")
+        print(cursession().__dict__)
+        p = figure()
+        p.line([], [], name="learning_curve_train", legend="learning curve train", color="blue")
+        p.line([], [], name="learning_curve_valid", legend="learning curve valid", color="green")
+        show(p)
+        renderer = p.select(dict(name="learning_curve_train"))
+        curve_train_ds = renderer[0].data_source
+        renderer = p.select(dict(name="learning_curve_valid"))
+        curve_valid_ds = renderer[0].data_source
 
     model = build_model(input_width=32, input_height=32,
                         output_dim=10)
@@ -420,12 +423,13 @@ if __name__ == "__main__":
             status["accuracy_valid"] = (nnet.predict(X_test[s])==y_test[s]).mean()
             status["error_valid"] = 1 - status["accuracy_valid"]
             
-            curve_train_ds.data["x"].append(status["epoch"])
-            curve_valid_ds.data["x"].append(status["epoch"])
-            curve_train_ds.data["y"].append(1-status["accuracy_train"])
-            curve_valid_ds.data["y"].append(1-status["accuracy_valid"])
-            cursession().store_objects(curve_train_ds)
-            cursession().store_objects(curve_valid_ds)
+            if use_bokeh:
+                curve_train_ds.data["x"].append(status["epoch"])
+                curve_valid_ds.data["x"].append(status["epoch"])
+                curve_train_ds.data["y"].append(1-status["accuracy_train"])
+                curve_valid_ds.data["y"].append(1-status["accuracy_valid"])
+                cursession().store_objects(curve_train_ds)
+                cursession().store_objects(curve_valid_ds)
             decay = np.array((1 - 5.0e-6), dtype="float32")
             self.learning_rate.set_value(self.learning_rate.get_value() * decay)
             return status
