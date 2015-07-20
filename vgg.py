@@ -468,6 +468,16 @@ if __name__ == "__main__":
         batch_iterator=MyBatchIterator(),
     )
     
+
+    """
+    directory = "{0}/cifar10/pylearn2_gcn_whitened/".format(os.getenv("DATA_PATH"))
+    import cPickle as pickle
+    train = pickle.load(open(directory + "train.pkl"))
+    test = pickle.load(open(directory + "test.pkl"))
+    X_train = train.X.reshape((train.X.shape[0], 3, 32, 32))
+    X_test = test.X.reshape((X_train.shape[0], 3, 32, 32))
+    """
+    
     if not os.path.exists("data_cached.npz"):
         data = Cifar10(batch_indexes=[1, 2, 3, 4, 5, 6])
         data.load()
@@ -480,11 +490,11 @@ if __name__ == "__main__":
         X, y = shuffle(X, y)
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
         
-        pipeline = make_pipeline(ZCA(), StandardScaler())
-        pipeline.fit(X_train)
+        pipeline = make_pipeline(MinMaxScaler())
+        pipeline.fit(linearize(X_train))
 
-        X_train = pipeline.transform(X_train).reshape((X_train.shape[0], 3, 32, 32))
-        X_test = pipeline.transform(X_test).reshape((X_test.shape[0], 3, 32, 32))
+        X_train = pipeline.transform(linearize(X_train)).reshape((X_train.shape[0], 3, 32, 32))
+        X_test = pipeline.transform(linearize(X_test)).reshape((X_test.shape[0], 3, 32, 32))
 
         np.savez("data_cached.npz", 
                 X_train=X_train, y_train=y_train, 
