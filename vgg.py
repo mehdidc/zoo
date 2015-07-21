@@ -9,8 +9,6 @@ import theano
 import theano.tensor as T
 from theano.sandbox import rng_mrg
 
-BATCH_SIZE = 128
-
 
 import numpy as np
 from scipy import linalg
@@ -43,13 +41,15 @@ class ZCA(BaseEstimator, TransformerMixin):
         return X_transformed
 
 def build_model(input_width=224, input_height=224, output_dim=1000,
-                batch_size=BATCH_SIZE, dimshuffle=True,
+                batch_size=None, 
+                dimshuffle=True,
                 rng=None):
-    
-    rng = rng_mrg.MRG_RandomStreams(1234)
+        
+    if rng is None:
+        rng = rng_mrg.MRG_RandomStreams(1234)
 
     l_in = lasagne.layers.InputLayer(
-        shape=(None, 3, input_width, input_height),
+        shape=(batch_size, 3, input_width, input_height),
     )
 
     if not dimshuffle:
@@ -81,6 +81,7 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
         l_pool1 = cuda_convnet.c01b_to_bc01(l_pool1)
 
     l_pool1 = lasagne.layers.DropoutLayer(l_pool1, p=0.25)
+    l_pool1._srng = rng
 
     l_conv3 = cuda_convnet.Conv2DCCLayer(
         l_pool1,
@@ -109,6 +110,7 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
         l_pool2 = cuda_convnet.c01b_to_bc01(l_pool2)
 
     l_pool2 = lasagne.layers.DropoutLayer(l_pool2, p=0.25)
+    l_pool2._srng = rng
 
     l_conv5 = cuda_convnet.Conv2DCCLayer(
         l_pool2,
@@ -155,6 +157,7 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
     if not dimshuffle:
         l_pool3 = cuda_convnet.c01b_to_bc01(l_pool3)
     l_pool3 = lasagne.layers.DropoutLayer(l_pool3, p=0.25)
+    l_pool3._srng = rng
 
     l_hidden1 = lasagne.layers.DenseLayer(
         l_pool3,
@@ -162,13 +165,16 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
         nonlinearity=lasagne.nonlinearities.rectify,
     )
     l_hidden1 = lasagne.layers.DropoutLayer(l_hidden1, p=0.5)
+    l_hidden1._srng = rng
 
     l_hidden2 = lasagne.layers.DenseLayer(
         l_hidden1,
         num_units=1024,
         nonlinearity=lasagne.nonlinearities.rectify,
+        name
     )
     l_hidden2 = lasagne.layers.DropoutLayer(l_hidden2, p=0.5)
+    l_hidden2._srng = rng
 
     l_out = lasagne.layers.DenseLayer(
         l_hidden2,
@@ -179,11 +185,11 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
     return LightweightModel([l_in], [l_out])
 
 
-def build_model_small(input_width=32, input_height=32, output_dim=100,
-                batch_size=BATCH_SIZE, dimshuffle=True):
+def build_model_small(input_width=32, input_height=32, output_dim=10,
+                      batch_size=None, dimshuffle=True):
 
     l_in = lasagne.layers.InputLayer(
-        shape=(None, 3, input_width, input_height),
+        shape=(batch_size, 3, input_width, input_height),
     )
 
     if not dimshuffle:
@@ -264,11 +270,11 @@ def build_model_small(input_width=32, input_height=32, output_dim=100,
     return LightweightModel([l_in], [l_out])
 
 
-def build_model_very_small(input_width=32, input_height=32, output_dim=100,
-                     batch_size=BATCH_SIZE, dimshuffle=True):
+def build_model_very_small(input_width=32, input_height=32, output_dim=10,
+                           batch_size=None, dimshuffle=True):
 
     l_in = lasagne.layers.InputLayer(
-        shape=(None, 3, input_width, input_height),
+        shape=(batch_size, 3, input_width, input_height),
     )
 
     if not dimshuffle:
@@ -336,12 +342,16 @@ import numpy as np
 from skimage import transform as tf
 from realtime_augmentation import random_perturbation_transform, fast_warp
 
-def Transform(X, rng):
-    zoom_range = (1.0, 1.1)
-    rotation_range = (0, 360)
-    shear_range = (0, 0)
-    translation_range = (-4, 4)
-    transf = random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=True)
+def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, translation_range=None, do_flip=True):
+    if zoom_range is None:
+        zoom_range = (1.0, 1.1)
+    if rotation_range is None:
+        rotation_range = (0, 360)
+    if shear_range is None:
+        shear_range = (0, 0)
+    if translation_range is None:
+        translation_range = (-4, 4)
+    transf = random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=do_flip)
     X_trans = np.zeros(X.shape, dtype="float32")
     for i in range(X.shape[0]):
        X_trans[i] = fast_warp(X[i], transf, output_shape=(32, 32))
@@ -351,7 +361,13 @@ def Transform(X, rng):
 from lasagne.easy import BatchIterator, get_batch_slice
 class MyBatchIterator(BatchIterator):
 
-     def transform(self, batch_index, V):
+    def __init__(self, nb_data_augmentation=1,  **transform_params):
+        super(MyBatchIterator, self).__init__()
+
+        self.nb_data_augmentation = nb_data_augmentation
+        self.transform_params = transform_params
+
+    def transform(self, batch_index, V):
         assert self.batch_size is not None
         assert self.nb_batches is not None
 
@@ -368,8 +384,8 @@ class MyBatchIterator(BatchIterator):
 
         X_list = [X]
         y_list = [y]
-        for i in range(5):
-            X_transformed = Transform(X.transpose(0, 3, 2, 1), np.random).transpose((0, 3, 2, 1))
+        for i in range(self.nb_data_augmentation):
+            X_transformed = Transform(X.transpose(0, 3, 2, 1), np.random, **self.transform_params).transpose((0, 3, 2, 1))
             X_list.append(X_transformed)
             y_list.append(y)
 
@@ -391,6 +407,44 @@ if __name__ == "__main__":
     import time
     import os
     
+    from lightexperiments.light import Light
+    from theano.sandbox import rng_mrg
+
+    seed = 1234
+    np.random.seed(seed)
+    rng = rng_mrg.MRG_RandomStreams(seed)
+
+    light = Light()
+    light.launch()
+    light.initials()
+    light.file_snapshot()
+    light.set_seed(seed)
+    light.tag("cifar10_vgg")
+
+    hp = dict(
+            learning_rate=0.01,
+            learning_rate_decay=5.0e-6,
+            weight_decay=1e-5,
+            max_nb_epochs=2,
+            batch_size=64,
+            momentum=0.9,
+            patience_nb_epochs=20,
+            patience_threshold=1.14,
+            patience_check_each=5,
+
+            # data augmentation
+            nb_data_augmentation=5,
+            zoom_range=(1.0, 1.1),
+            rotation_range=(0, 360),
+            shear_range=(0, 0),
+            translation_range=(-4, 4),
+            do_flip=True
+
+    )
+    for k, v in hp.items():
+        light.set(k, v)
+
+    use_pylearn_data = True
     use_bokeh = True
 
     if use_bokeh:
@@ -407,7 +461,8 @@ if __name__ == "__main__":
         curve_valid_ds = renderer[0].data_source
 
     model = build_model(input_width=32, input_height=32,
-                        output_dim=10)
+                        output_dim=10,
+                        rng=rng)
 
     class MyBatchOptimizer(BatchOptimizer):
 
@@ -430,21 +485,24 @@ if __name__ == "__main__":
                 curve_valid_ds.data["y"].append(1-status["accuracy_valid"])
                 cursession().store_objects(curve_train_ds)
                 cursession().store_objects(curve_valid_ds)
-            decay = np.array((1 - 5.0e-6), dtype="float32")
+            decay = np.array((1 - hp["learning_rate_decay"]), dtype="float32")
             self.learning_rate.set_value(self.learning_rate.get_value() * decay)
+
+            for k, v in status.items():
+                light.append(k, float(v))
+            light.append("learning_rate_per_epoch", self.learning_rate.get_value())
             return status
 
-
-    learning_rate = theano.shared(np.array(0.01, dtype="float32"))
+    learning_rate = theano.shared(np.array(hp["learning_rate"], dtype="float32"))
     batch_optimizer = MyBatchOptimizer(
-        verbose=2, max_nb_epochs=1000,
-        batch_size=BATCH_SIZE,
-        optimization_procedure=(updates.momentum, {"learning_rate": learning_rate, "momentum": 0.9}),
+        verbose=2, max_nb_epochs=hp["max_nb_epochs"],
+        batch_size=hp["batch_size"],
+        optimization_procedure=(updates.momentum, {"learning_rate": learning_rate, "momentum": hp["momentum"]}),
         #whole_dataset_in_device=True,
         patience_stat="error_valid",
-        patience_nb_epochs=20,
-        patience_progression_rate_threshold=1.14,
-        patience_check_each=5,
+        patience_nb_epochs=hp["patience_nb_epochs"],
+        patience_progression_rate_threshold=hp["patience_threshold"],
+        patience_check_each=hp["patience_check_each"],
     )
     batch_optimizer.learning_rate = learning_rate
 
@@ -462,27 +520,38 @@ if __name__ == "__main__":
         X = tensors["X"]
         y = tensors["y"]
         y_hat, = model.get_output(X)
-        return T.nnet.categorical_crossentropy(y_hat, y).mean()
+        if hp["weight_decay"] > 0:
+            l1 = sum(T.abs_(param).sum() for param in model.capsule.all_params_regularizable) * hp["weight_decay"]
+        else:
+            l1 = 0
+        return T.nnet.categorical_crossentropy(y_hat, y).mean() + l1
+
+    batch_iterator = MyBatchIterator(hp["nb_data_augmentation"],
+                                     zoom_range=hp["zoom_range"],
+                                     rotation_range=hp["rotation_range"],
+                                     shear_range=hp["shear_range"],
+                                     translation_range=hp["translation_range"],
+                                     do_flip=hp["do_flip"])
 
     nnet = Capsule(
         input_variables, model,
         loss_function,
         functions=functions,
         batch_optimizer=batch_optimizer,
-        batch_iterator=MyBatchIterator(),
+        batch_iterator=batch_iterator,
     )
     
-
-    """
-    directory = "{0}/cifar10/pylearn2_gcn_whitened/".format(os.getenv("DATA_PATH"))
-    import cPickle as pickle
-    train = pickle.load(open(directory + "train.pkl"))
-    test = pickle.load(open(directory + "test.pkl"))
-    X_train = train.X.reshape((train.X.shape[0], 3, 32, 32))
-    X_test = test.X.reshape((X_train.shape[0], 3, 32, 32))
-    """
+    if use_pylearn_data is True:
+        directory = "{0}/cifar10/pylearn2_gcn_whitened/".format(os.getenv("DATA_PATH"))
+        import cPickle as pickle
+        train = pickle.load(open(directory + "train.pkl"))
+        test = pickle.load(open(directory + "test.pkl"))
+        X_train = train.X.reshape((train.X.shape[0], 3, 32, 32))
+        X_test = test.X.reshape((test.X.shape[0], 3, 32, 32))
+        y_train = train.y[:, 0]
+        y_test = test.y[:, 0]
     
-    if not os.path.exists("data_cached.npz"):
+    elif not os.path.exists("data_cached.npz"):
         data = Cifar10(batch_indexes=[1, 2, 3, 4, 5, 6])
         data.load()
         imshape = (data.X.shape[0], 3, 32, 32)
@@ -511,3 +580,7 @@ if __name__ == "__main__":
                                            data["y_test"])
         print(X_train.max())
     nnet.fit(X=X_train, y=y_train)
+
+    light.endings() # save the duration
+    light.store_experiment() # update the DB
+    light.close()
