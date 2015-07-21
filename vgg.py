@@ -426,7 +426,7 @@ if __name__ == "__main__":
             learning_rate=0.01,
             learning_rate_decay=5.0e-6,
             weight_decay=1e-5,
-            max_nb_epochs=2,
+            max_nb_epochs=800,
             batch_size=64,
             momentum=0.9,
             patience_nb_epochs=800,
