@@ -429,7 +429,7 @@ if __name__ == "__main__":
             max_nb_epochs=2,
             batch_size=64,
             momentum=0.9,
-            patience_nb_epochs=20,
+            patience_nb_epochs=800,
             patience_threshold=1.14,
             patience_check_each=5,
 
