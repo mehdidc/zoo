@@ -15,6 +15,8 @@ from scipy import linalg
 from sklearn.utils import as_float_array
 from sklearn.base import TransformerMixin, BaseEstimator
 
+from datetime import datetime
+
 # source : https://gist.github.com/duschendestroyer/5170087
 
 class ZCA(BaseEstimator, TransformerMixin):
@@ -171,7 +173,6 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
         l_hidden1,
         num_units=1024,
         nonlinearity=lasagne.nonlinearities.rectify,
-        name
     )
     l_hidden2 = lasagne.layers.DropoutLayer(l_hidden2, p=0.5)
     l_hidden2._srng = rng
@@ -428,7 +429,7 @@ if __name__ == "__main__":
             max_nb_epochs=2,
             batch_size=64,
             momentum=0.9,
-            patience_nb_epochs=20,
+            patience_nb_epochs=800,
             patience_threshold=1.14,
             patience_check_each=5,
 
@@ -463,11 +464,16 @@ if __name__ == "__main__":
     model = build_model(input_width=32, input_height=32,
                         output_dim=10,
                         rng=rng)
+    
 
     class MyBatchOptimizer(BatchOptimizer):
 
         def iter_update(self, epoch, nb_batches, iter_update_batch):
+            start = datetime.now()
             status = super(MyBatchOptimizer, self).iter_update(epoch, nb_batches, iter_update_batch)
+            duration = (datetime.now() - start).total_seconds()
+            status["duration"] = duration
+
             s = np.arange(X_train.shape[0])
             np.random.shuffle(s)
             s = s[0:1000]
@@ -580,7 +586,6 @@ if __name__ == "__main__":
                                            data["y_test"])
         print(X_train.max())
     nnet.fit(X=X_train, y=y_train)
-
     light.endings() # save the duration
     light.store_experiment() # update the DB
     light.close()
