@@ -347,7 +347,7 @@ def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, tr
     if zoom_range is None:
         zoom_range = (1.0, 1.1)
     if rotation_range is None:
-        rotation_range = (0, 360)
+        rotation_range = (0, 180)
     if shear_range is None:
         shear_range = (0, 0)
     if translation_range is None:
@@ -424,9 +424,9 @@ if __name__ == "__main__":
 
     hp = dict(
             learning_rate=0.01,
-            learning_rate_decay=5.0e-6,
+            learning_rate_decay=5.0e-8,
             weight_decay=1e-5,
-            max_nb_epochs=800,
+            max_nb_epochs=120,
             batch_size=64,
             momentum=0.9,
             patience_nb_epochs=20,
@@ -434,11 +434,11 @@ if __name__ == "__main__":
             patience_check_each=5,
 
             # data augmentation
-            nb_data_augmentation=5,
-            zoom_range=(1.0, 1.1),
+            nb_data_augmentation=3,
+            zoom_range=(1.0, 1.3),
             rotation_range=(0, 360),
             shear_range=(0, 0),
-            translation_range=(-4, 4),
+            translation_range=(-2, 2),
             do_flip=True
 
     )
@@ -496,7 +496,7 @@ if __name__ == "__main__":
 
             for k, v in status.items():
                 light.append(k, float(v))
-            light.append("learning_rate_per_epoch", self.learning_rate.get_value())
+            light.append("learning_rate_per_epoch", float(self.learning_rate.get_value()))
             return status
 
     learning_rate = theano.shared(np.array(hp["learning_rate"], dtype="float32"))
@@ -585,7 +585,10 @@ if __name__ == "__main__":
                                            data["X_test"],
                                            data["y_test"])
         print(X_train.max())
-    nnet.fit(X=X_train, y=y_train)
+    try:
+        nnet.fit(X=X_train, y=y_train)
+    except KeyboardInterrupt:
+        print("interruption...")
     light.endings() # save the duration
     light.store_experiment() # update the DB
     light.close()
