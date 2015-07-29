@@ -163,18 +163,18 @@ def build_model(input_width=224, input_height=224, output_dim=1000,
 
     l_hidden1 = lasagne.layers.DenseLayer(
         l_pool3,
-        num_units=1024,
+        num_units=2048,
         nonlinearity=lasagne.nonlinearities.rectify,
     )
-    l_hidden1 = lasagne.layers.DropoutLayer(l_hidden1, p=0.5)
+    l_hidden1 = lasagne.layers.DropoutLayer(l_hidden1, p=0.7)
     l_hidden1._srng = rng
 
     l_hidden2 = lasagne.layers.DenseLayer(
         l_hidden1,
-        num_units=1024,
+        num_units=2048,
         nonlinearity=lasagne.nonlinearities.rectify,
     )
-    l_hidden2 = lasagne.layers.DropoutLayer(l_hidden2, p=0.5)
+    l_hidden2 = lasagne.layers.DropoutLayer(l_hidden2, p=0.7)
     l_hidden2._srng = rng
 
     l_out = lasagne.layers.DenseLayer(
@@ -424,8 +424,8 @@ if __name__ == "__main__":
 
     hp = dict(
             learning_rate=0.01,
-            learning_rate_decay=5.0e-8,
-            weight_decay=1e-5,
+            learning_rate_decay=5.0e-10,
+            weight_decay=0.00002,
             max_nb_epochs=120,
             batch_size=64,
             momentum=0.9,
@@ -434,7 +434,7 @@ if __name__ == "__main__":
             patience_check_each=5,
 
             # data augmentation
-            nb_data_augmentation=3,
+            nb_data_augmentation=2,
             zoom_range=(1.0, 1.3),
             rotation_range=(0, 360),
             shear_range=(0, 0),
@@ -446,7 +446,7 @@ if __name__ == "__main__":
         light.set(k, v)
 
     use_pylearn_data = True
-    use_bokeh = True
+    use_bokeh = False
 
     if use_bokeh:
         from bokeh.plotting import cursession, figure, show, output_server

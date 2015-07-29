@@ -13,11 +13,14 @@ from collections import defaultdict
 def save_reports(reports):
 
     output_file("out.html")
-    cols = [u'zoom_range', u'seed', u'duration', u'weight_decay', u'rotation_range', u'end', u'patience_check_each', u'start', 'momentum', u'translation_range', u'shear_range',u'learning_rate', u'max_nb']
+    cols = [u'zoom_range', u'seed', u'duration', u'weight_decay', u'rotation_range', 'do_flip', 'patience_check_each', u'start', 'end', 'momentum', u'translation_range', u'shear_range',u'learning_rate', u'nb_data_augmentation', 'batch_size', 'max_nb_epochs', 'learning_rate_decay']
+
     data = defaultdict(list)
     for i, r in enumerate(reports):
         for c in cols:
             if c in r:
+                if c == "start" or c == "end":
+                    r[c] = str(r[c])
                 data[c].append(r[c])
             else:
                 data[c].append(None)
@@ -31,12 +34,15 @@ def save_reports(reports):
             data["accuracy_valid"].append(r["accuracy_valid"][-1])
         else:
             data["accuracy_valid"].append(None)
+        
+    
     source = ColumnDataSource(data)
     columns = [TableColumn(field="id", title="id")] + [
              TableColumn(field=c, title=c)
              for c in cols
     ] + [TableColumn(field="accuracy_train", title="accuracy_train"),
-         TableColumn(field="accuracy_valid", title="accuracy_valid")]
+         TableColumn(field="accuracy_valid", title="accuracy_valid")] 
+
 
     data_table = DataTable(source=source, columns=columns, editable=False)
     P = []
