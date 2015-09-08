@@ -445,7 +445,7 @@ if __name__ == "__main__":
     for k, v in hp.items():
         light.set(k, v)
 
-    use_pylearn_data = True
+    use_pylearn_data = False
     use_bokeh = False
 
     if use_bokeh:
