@@ -77,7 +77,7 @@ if __name__ == "__main__":
     from collections import OrderedDict
 
     from lightexperiments.light import Light
-    from lasagne.random import set_rng
+    #from lasagne.random import set_rng
     #from theano.sandbox import rng_mrg
 
     seed = 1234
@@ -91,6 +91,7 @@ if __name__ == "__main__":
     light.initials()
     light.file_snapshot()
     light.set_seed(seed)
+    light.tag("deepconvnets")
 
     data = Cifar10(batch_indexes=[1, 2, 3, 4, 5, 6])
     data.load()
@@ -101,7 +102,7 @@ if __name__ == "__main__":
         learning_rate=0.001,
         learning_rate_decay=5.0e-10,
         weight_decay=0,
-        max_nb_epochs=120,
+        max_nb_epochs=300,
         batch_size=64,
         momentum=0.9,
 
@@ -146,7 +147,7 @@ if __name__ == "__main__":
             accs = []
             for mini_batch in iterate_minibatches(X_train.shape[0],
                                                   hp["batch_size"]):
-                acc = (nnet.predict(X_train[mini_batch])==y_train[mini_batch])
+                acc = (nnet.predict(X_train[mini_batch])==y_train[mini_batch]).mean()
                 accs.append(acc)
             status["accuracy_train"] = np.mean(accs)
             status["accuracy_train_std"] = np.std(accs)
@@ -154,7 +155,7 @@ if __name__ == "__main__":
             accs = []
             for mini_batch in iterate_minibatches(X_test.shape[0],
                                                   hp["batch_size"]):
-                acc = (nnet.predict(X_test[mini_batch])==y_test[mini_batch])
+                acc = (nnet.predict(X_test[mini_batch])==y_test[mini_batch]).mean()
                 accs.append(acc)
 
             status["accuracy_test"] = np.mean(accs)
@@ -230,8 +231,8 @@ if __name__ == "__main__":
     X = 2 * ((X - X_min) / (X_max - X_min)) - 1
     X, y = shuffle(X, y)
 
-    X = X[0:10000]
-    y = y[0:10000]
+    #X = X[0:10000]
+    #y = y[0:10000]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
     light.set("nb_examples_train", X_train.shape[0])

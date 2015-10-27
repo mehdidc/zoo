@@ -34,14 +34,14 @@ def save_reports(reports):
             data["accuracy_valid"].append(r["accuracy_valid"][-1])
         else:
             data["accuracy_valid"].append(None)
-        
-    
+
+
     source = ColumnDataSource(data)
     columns = [TableColumn(field="id", title="id")] + [
              TableColumn(field=c, title=c)
              for c in cols
     ] + [TableColumn(field="accuracy_train", title="accuracy_train"),
-         TableColumn(field="accuracy_valid", title="accuracy_valid")] 
+         TableColumn(field="accuracy_valid", title="accuracy_valid")]
 
 
     data_table = DataTable(source=source, columns=columns, editable=False)
