@@ -28,7 +28,7 @@ def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, tr
     transf = random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=do_flip)
     X_trans = np.zeros(X.shape, dtype="float32")
     for i in range(X.shape[0]):
-       X_trans[i] = fast_warp(X[i], transf, output_shape=(64, 64))
+       X_trans[i] = fast_warp(X[i], transf, output_shape=(X.shape[1], X.shape[2], X.shape[3]))
     return X_trans
 
 
@@ -64,7 +64,6 @@ class MyBatchIterator(BatchIterator):
             X_transformed = tr.transpose((0, 3, 2, 1))
             X_list.append(X_transformed)
             y_list.append(y)
-
         d["X"] = np.concatenate(X_list, axis=0)
         d["y"] = np.concatenate(y_list, axis=0)
         d["X"], d["y"] = shuffle(d["X"], d["y"])
@@ -103,7 +102,7 @@ if __name__ == "__main__":
         learning_rate_decay=5.0e-10,
         weight_decay=0,
         max_nb_epochs=300,
-        batch_size=64,
+        batch_size=32,
         momentum=0.9,
 
         patience_nb_epochs=20,
@@ -111,9 +110,9 @@ if __name__ == "__main__":
         patience_check_each=1,
 
         # data augmentation
-        nb_data_augmentation=0,
+        nb_data_augmentation=1,
         zoom_range=(1.0, 1.3),
-        rotation_range=(0, 360),
+        rotation_range=(0, 180),
         shear_range=(0, 0),
         translation_range=(-2, 2),
         do_flip=True
@@ -134,6 +133,7 @@ if __name__ == "__main__":
         input_height=data.img_dim[2],
         output_dim=data.output_dim)
     light.set("model", model_class.__name__)
+    print(model_class.__name__)
 
     class MyBatchOptimizer(BatchOptimizer):
 
@@ -173,7 +173,7 @@ if __name__ == "__main__":
         verbose=2, max_nb_epochs=hp["max_nb_epochs"],
         batch_size=hp["batch_size"],
         optimization_procedure=(updates.momentum, {"learning_rate": learning_rate}),
-        whole_dataset_in_device=True,
+#       whole_dataset_in_device=True,
         patience_stat="error_valid",
         patience_nb_epochs=hp["patience_nb_epochs"],
         patience_progression_rate_threshold=hp["patience_threshold"],
@@ -213,7 +213,7 @@ if __name__ == "__main__":
         loss_function,
         functions=functions,
         batch_optimizer=batch_optimizer,
-        #batch_iterator=batch_iterator,
+        batch_iterator=batch_iterator,
     )
 
     from sklearn.preprocessing import LabelEncoder
@@ -231,8 +231,8 @@ if __name__ == "__main__":
     X = 2 * ((X - X_min) / (X_max - X_min)) - 1
     X, y = shuffle(X, y)
 
-    #X = X[0:10000]
-    #y = y[0:10000]
+#   X = X[0:10000]
+#   y = y[0:10000]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
     light.set("nb_examples_train", X_train.shape[0])
