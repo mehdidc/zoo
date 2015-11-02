@@ -10,11 +10,12 @@ from bokeh.io import output_file, show, vplot
 
 from collections import defaultdict
 
+
 def save_reports(reports):
-
+    print(len(reports))
     output_file("out.html")
-    cols = [u'zoom_range', u'seed', u'duration', u'weight_decay', u'rotation_range', 'do_flip', 'patience_check_each', u'start', 'end', 'momentum', u'translation_range', u'shear_range',u'learning_rate', u'nb_data_augmentation', 'batch_size', 'max_nb_epochs', 'learning_rate_decay']
-
+    cols = ['seed', u'duration', 'accuracy_train', 'accuracy_valid']
+    cols_hp = reports[0]["hp"].keys()
     data = defaultdict(list)
     for i, r in enumerate(reports):
         for c in cols:
@@ -24,17 +25,9 @@ def save_reports(reports):
                 data[c].append(r[c])
             else:
                 data[c].append(None)
+        for c in cols_hp:
+            data[c].append(r["hp"].get(c))
         data["id"].append(i)
-        if "accuracy_train" in r:
-            data["accuracy_train"].append(r["accuracy_train"][-1])
-        else:
-            data["accuracy_train"].append(None)
-
-        if "accuracy_valid" in r:
-            data["accuracy_valid"].append(r["accuracy_valid"][-1])
-        else:
-            data["accuracy_valid"].append(None)
-
 
     source = ColumnDataSource(data)
     columns = [TableColumn(field="id", title="id")] + [
@@ -62,6 +55,6 @@ if __name__ == "__main__":
     from lightexperiments.light import Light
     light = Light()
     light.launch()
-    reports = light.db.find({"tags": "cifar10_vgg"})
+    reports = light.db.find({"tags": "deepconvnets"})
     save_reports(list(reports))
     light.close()

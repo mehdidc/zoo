@@ -15,6 +15,7 @@ import numpy as np
 
 from realtime_augmentation import random_perturbation_transform, fast_warp
 
+import json
 
 def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, translation_range=None, do_flip=True):
     if zoom_range is None:
@@ -101,7 +102,7 @@ if __name__ == "__main__":
         learning_rate=0.001,
         learning_rate_decay=5.0e-10,
         weight_decay=0,
-        max_nb_epochs=300,
+        max_nb_epochs=110,
         batch_size=32,
         momentum=0.9,
 
@@ -111,10 +112,10 @@ if __name__ == "__main__":
 
         # data augmentation
         nb_data_augmentation=1,
-        zoom_range=(1.0, 1.3),
+        zoom_range=(1.0, 1.4),
         rotation_range=(0, 180),
         shear_range=(0, 0),
-        translation_range=(-2, 2),
+        translation_range=(-20, 20),
         do_flip=True
 
     )
@@ -127,13 +128,14 @@ if __name__ == "__main__":
     import spatially_sparse # NOQA
     import nin # NOQA
     import fully # NOQA
-    model_class = spatially_sparse
+    model_class = vgg
     model = model_class.build_model(
         input_width=data.img_dim[1],
         input_height=data.img_dim[2],
         output_dim=data.output_dim)
     light.set("model", model_class.__name__)
     print(model_class.__name__)
+    print(json.dumps(hp, indent=4))
 
     class MyBatchOptimizer(BatchOptimizer):
 
