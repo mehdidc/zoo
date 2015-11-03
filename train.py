@@ -111,7 +111,7 @@ if __name__ == "__main__":
         patience_check_each=1,
 
         # data augmentation
-        nb_data_augmentation=1,
+        nb_data_augmentation=2,
         zoom_range=(1.0, 1.4),
         rotation_range=(0, 180),
         shear_range=(0, 0),
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     import spatially_sparse # NOQA
     import nin # NOQA
     import fully # NOQA
-    model_class = vgg
+    model_class = fully
     model = model_class.build_model(
         input_width=data.img_dim[1],
         input_height=data.img_dim[2],

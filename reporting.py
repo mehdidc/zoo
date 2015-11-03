@@ -14,15 +14,21 @@ from collections import defaultdict
 def save_reports(reports):
     print(len(reports))
     output_file("out.html")
-    cols = ['seed', u'duration', 'accuracy_train', 'accuracy_valid']
+    cols = ['model', 'dataset', 'nb_examples_train',
+            'nb_examples_test', 'seed', u'duration',
+            'accuracy_train', 'accuracy_test']
     cols_hp = reports[0]["hp"].keys()
     data = defaultdict(list)
     for i, r in enumerate(reports):
         for c in cols:
             if c in r:
                 if c == "start" or c == "end":
-                    r[c] = str(r[c])
-                data[c].append(r[c])
+                    o = str(r[c])
+                elif type(r[c]) == list:
+                    o = r[c][-1]
+                else:
+                    o = r[c]
+                data[c].append(o)
             else:
                 data[c].append(None)
         for c in cols_hp:
@@ -32,19 +38,14 @@ def save_reports(reports):
     source = ColumnDataSource(data)
     columns = [TableColumn(field="id", title="id")] + [
              TableColumn(field=c, title=c)
-             for c in cols
-    ] + [TableColumn(field="accuracy_train", title="accuracy_train"),
-         TableColumn(field="accuracy_valid", title="accuracy_valid")]
-
-
+             for c in cols + cols_hp
+    ]
     data_table = DataTable(source=source, columns=columns, editable=False)
     P = []
     for i, r in enumerate(reports):
-        if not("accuracy_train" in r and "accuracy_valid") in r:
-            continue
         p = figure(title="accuracy exp {0}".format(i))
         p.line(r["epoch"], r["accuracy_train"], line_width=2, color="blue", legend="train")
-        p.line(r["epoch"], r["accuracy_valid"], line_width=2, color="green", legend="test")
+        p.line(r["epoch"], r["accuracy_test"], line_width=2, color="green", legend="test")
         P.append(p)
 
     v = vplot(data_table, *P)
