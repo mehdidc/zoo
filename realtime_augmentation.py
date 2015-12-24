@@ -29,7 +29,7 @@ def select_indices(num, num_selected):
     return selected_indices
 
 
-def fast_warp(img, tf, output_shape=(53,53), mode='reflect'):
+def fast_warp(img, tf, output_shape=(53,53), mode='constant'):
     """
     This wrapper function is about five times faster than skimage.transform.warp, for our use case.
     """
@@ -48,7 +48,13 @@ center_shift = np.array((IMAGE_HEIGHT, IMAGE_WIDTH)) / 2. - 0.5
 tform_center = skimage.transform.SimilarityTransform(translation=-center_shift)
 tform_uncenter = skimage.transform.SimilarityTransform(translation=center_shift)
 
-def build_augmentation_transform(zoom=1.0, rotation=0, shear=0, translation=(0, 0)):
+def build_augmentation_transform(zoom=1.0, rotation=0, shear=0, translation=(0, 0),
+                                 h=32, w=32):
+
+    center_shift = np.array((h, w)) / 2. - 0.5
+    tform_center = skimage.transform.SimilarityTransform(translation=-center_shift)
+    tform_uncenter = skimage.transform.SimilarityTransform(translation=center_shift)
+
     tform_augment = skimage.transform.AffineTransform(scale=(1/zoom, 1/zoom), rotation=np.deg2rad(rotation), shear=np.deg2rad(shear), translation=translation)
     tform = tform_center + tform_augment + tform_uncenter # shift to center, augment, shift back (for the rotation/shearing)
     return tform
@@ -109,7 +115,7 @@ def build_ds_transform(ds_factor=1.0, orig_size=(424, 424), target_size=(53, 53)
 
 
 
-def random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=False):
+def random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=False, w=32, h=32):
     # random shift [-4, 4] - shift no longer needs to be integer!
     shift_x = np.random.uniform(*translation_range)
     shift_y = np.random.uniform(*translation_range)
@@ -133,7 +139,7 @@ def random_perturbation_transform(zoom_range, rotation_range, shear_range, trans
     zoom = np.exp(np.random.uniform(*log_zoom_range)) # for a zoom factor this sampling approach makes more sense.
     # the range should be multiplicatively symmetric, so [1/1.1, 1.1] instead of [0.9, 1.1] makes more sense.
     
-    return build_augmentation_transform(zoom, rotation, shear, translation)
+    return build_augmentation_transform(zoom, rotation, shear, translation, w=w, h=h)
 
 
 def perturb_and_dscrop(img, ds_transforms, augmentation_params, target_sizes=None):

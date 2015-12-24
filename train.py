@@ -3,7 +3,7 @@ from datetime import datetime
 import matplotlib as mpl
 mpl.use('Agg')
 from lasagnekit.easy import BatchOptimizer, BatchIterator, get_batch_slice
-from lasagnekit.generative.capsule import Capsule
+from lasagnekit.nnet.capsule import Capsule
 from lasagnekit.easy import iterate_minibatches
 from lasagne import updates
 import theano
@@ -12,12 +12,14 @@ import theano.tensor as T
 
 import numpy as np
 
-
 from realtime_augmentation import random_perturbation_transform, fast_warp
-
 import json
 
-def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, translation_range=None, do_flip=True):
+
+def Transform(X, rng,
+              zoom_range=None,
+              rotation_range=None,
+              shear_range=None, translation_range=None, do_flip=True):
     if zoom_range is None:
         zoom_range = (1.0, 1.1)
     if rotation_range is None:
@@ -26,13 +28,23 @@ def Transform(X, rng, zoom_range=None, rotation_range=None, shear_range=None, tr
         shear_range = (0, 0)
     if translation_range is None:
         translation_range = (-4, 4)
-    transf = random_perturbation_transform(zoom_range, rotation_range, shear_range, translation_range, do_flip=do_flip)
+    h = X.shape[1]
+    w = X.shape[2]
+    transf = random_perturbation_transform(
+                zoom_range,
+                rotation_range,
+                shear_range,
+                translation_range, do_flip=do_flip,
+                w=w, h=h)
     X_trans = np.zeros(X.shape, dtype="float32")
     for i in range(X.shape[0]):
-       X_trans[i] = fast_warp(X[i], transf, output_shape=(X.shape[1], X.shape[2], X.shape[3]))
+        X_trans[i] = fast_warp(
+            X[i], transf,
+            output_shape=(X.shape[1], X.shape[2], X.shape[3]), mode="constant")
     return X_trans
 
 
+from skimage.io import imsave
 class MyBatchIterator(BatchIterator):
 
     def __init__(self, nb_data_augmentation=1,  **transform_params):
@@ -58,17 +70,21 @@ class MyBatchIterator(BatchIterator):
 
         X_list = [X]
         y_list = [y]
+        #X_list = []
+        #y_list = []
         for i in range(self.nb_data_augmentation):
-            tr = Transform(X.transpose(0, 3, 2, 1),
+            tr = Transform(X.transpose(0, 2, 3, 1),
                            np.random,
                            **self.transform_params)
-            X_transformed = tr.transpose((0, 3, 2, 1))
+            imsave("out.png", (((tr[0] + 1) / 2.)))
+            X_transformed = tr.transpose((0, 3, 1, 2))
             X_list.append(X_transformed)
             y_list.append(y)
         d["X"] = np.concatenate(X_list, axis=0)
         d["y"] = np.concatenate(y_list, axis=0)
         d["X"], d["y"] = shuffle(d["X"], d["y"])
         return d
+
 
 if __name__ == "__main__":
     from lasagnekit.datasets.cifar10 import Cifar10
@@ -100,35 +116,37 @@ if __name__ == "__main__":
 
     hp = dict(
         learning_rate=0.001,
-        learning_rate_decay=5.0e-10,
+        learning_rate_decay=1e-5,
         weight_decay=0,
-        max_nb_epochs=110,
+        max_nb_epochs=700,
         batch_size=32,
         momentum=0.9,
 
-        patience_nb_epochs=20,
+        patience_nb_epochs=100,
         patience_threshold=1,
         patience_check_each=1,
 
         # data augmentation
-        nb_data_augmentation=2,
-        zoom_range=(1.0, 1.4),
-        rotation_range=(0, 180),
-        shear_range=(0, 0),
-        translation_range=(-20, 20),
+        nb_data_augmentation=1,
+        zoom_range=(1.0, 1.2),
+        rotation_range=(-90, 90),
+        shear_range=(1, 1.1),
+        translation_range=(-3, 3),
         do_flip=True
 
     )
 
     light.set("hp", hp)
 
-    import vgg # NOQA
-    import vgg_small # NOQA
-    import vgg_very_small # NOQA
-    import spatially_sparse # NOQA
-    import nin # NOQA
-    import fully # NOQA
-    model_class = fully
+    import vgg  # NOQA
+    import vgg_small  # NOQA
+    import vgg_very_small  # NOQA
+    import spatially_sparse  # NOQA
+    import nin  # NOQA
+    import fully  # NOQA
+    import residual #NOQA
+    # model_class = spatially_sparse
+    model_class = residual
     model = model_class.build_model(
         input_width=data.img_dim[1],
         input_height=data.img_dim[2],
@@ -171,10 +189,13 @@ if __name__ == "__main__":
             return status
 
     learning_rate = theano.shared(np.array(hp["learning_rate"], dtype="float32"))
+    momentum = hp["momentum"]
     batch_optimizer = MyBatchOptimizer(
-        verbose=2, max_nb_epochs=hp["max_nb_epochs"],
+        verbose=1, max_nb_epochs=hp["max_nb_epochs"],
         batch_size=hp["batch_size"],
-        optimization_procedure=(updates.momentum, {"learning_rate": learning_rate}),
+        #optimization_procedure=(updates.momentum, {"learning_rate": learning_rate}),
+        # optimization_procedure=(updates.momentum, {"learning_rate": learning_rate, "momentum": momentum}),
+        optimization_procedure=(updates.adagrad, {"learning_rate": learning_rate}),
 #       whole_dataset_in_device=True,
         patience_stat="error_valid",
         patience_nb_epochs=hp["patience_nb_epochs"],
@@ -232,9 +253,8 @@ if __name__ == "__main__":
     X_max = X.max(axis=(0, 2, 3))[None, :, None, None]
     X = 2 * ((X - X_min) / (X_max - X_min)) - 1
     X, y = shuffle(X, y)
-
-#   X = X[0:10000]
-#   y = y[0:10000]
+    #X = X[0:100]
+    #y = y[0:100]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
     light.set("nb_examples_train", X_train.shape[0])

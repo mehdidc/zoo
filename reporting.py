@@ -42,10 +42,14 @@ def save_reports(reports):
     ]
     data_table = DataTable(source=source, columns=columns, editable=False)
     P = []
+
     for i, r in enumerate(reports):
+        if "accuracy_train" not in r or "accuracy_test" not in r:
+            continue
+        epochs = range(1, len(r["accuracy_train"]) + 1)
         p = figure(title="accuracy exp {0}".format(i))
-        p.line(r["epoch"], r["accuracy_train"], line_width=2, color="blue", legend="train")
-        p.line(r["epoch"], r["accuracy_test"], line_width=2, color="green", legend="test")
+        p.line(epochs, r["accuracy_train"], line_width=2, color="blue", legend="train")
+        p.line(epochs, r["accuracy_test"], line_width=2, color="green", legend="test")
         P.append(p)
 
     v = vplot(data_table, *P)
