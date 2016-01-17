@@ -1,12 +1,10 @@
 import lasagne
 from lasagne.layers import Conv2DLayer as ConvLayer
-from lasagne.layers import MaxPool2DLayer as MaxPoolLayer
-# from lasagne.layers import DropoutLayer
 from lasagne.layers import ElemwiseSumLayer
 from lasagne.layers import DenseLayer
-from lasagne.layers import GlobalPoolLayer, DropoutLayer
 from lasagnekit.easy import LightweightModel
 from hp_toolkit.hp import Param, make_constant_param
+from lasagne.layers import GlobalPoolLayer
 
 relu = lasagne.nonlinearities.very_leaky_rectify
 
@@ -38,7 +36,8 @@ def residual_group(layer, nb=2,
             filter_size=(filter_size, filter_size),
             pad=pad,
             nonlinearity=nonlinearity,
-            stride=stride
+            stride=stride,
+            W=lasagne.init.HeNormal(gain='relu')
         )
         stride = 1
     return ElemwiseSumLayer([l_conv, residual])
@@ -67,9 +66,9 @@ params = dict(
     fs1=make_constant_param(3),
     fs2=make_constant_param(3),
     fs3=make_constant_param(3),
-    pg1=make_constant_param(2), nbg1=make_constant_param(2),
-    pg2=make_constant_param(2), nbg2=make_constant_param(2),
-    pg3=make_constant_param(2), nbg3=make_constant_param(2),
+    pg1=make_constant_param(2), nbg1=make_constant_param(5),
+    pg2=make_constant_param(2), nbg2=make_constant_param(5),
+    pg3=make_constant_param(2), nbg3=make_constant_param(5),
     nonlin=Param(initial='rectify',
                  interval=['rectify', 'leaky_rectify', 'very_leaky_rectify'],
                  type='choice'),
@@ -95,13 +94,14 @@ def build_model(input_width=32, input_height=32, output_dim=10,
         filter_size=hp["fs0"],
         nonlinearity=relu,
         pad=1,
+        W=lasagne.init.HeNormal(gain='relu')
     )
     print(l_conv.output_shape)
     l_conv = residual_block(
         l_conv, per_group=hp["pg1"], nb_groups=hp["nbg1"],
         filter_size=hp["fs1"],
         num_filters=hp["f1"],
-        stride=2)
+        stride=1)
     print(l_conv.output_shape)
     l_conv = residual_block(
         l_conv, per_group=hp["pg2"], nb_groups=hp["nbg2"],
@@ -113,7 +113,7 @@ def build_model(input_width=32, input_height=32, output_dim=10,
         l_conv, per_group=hp["pg3"], nb_groups=hp["nbg3"],
         filter_size=hp["fs3"],
         num_filters=hp["f3"],
-        stride=1)
+        stride=2)
     print(l_conv.output_shape)
     l_conv = GlobalPoolLayer(l_conv)
     l_out = DenseLayer(

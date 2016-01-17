@@ -2,8 +2,10 @@ from lasagne.layers import DenseLayer, InputLayer, DropoutLayer
 from lasagnekit.easy import LightweightModel
 from lasagne.nonlinearities import softmax, rectify
 
+params = {}
 
-def build_model(input_width=32, input_height=32, output_dim=10):
+
+def build_model(input_width=32, input_height=32, output_dim=10, **hp):
     net = {}
     net['input'] = InputLayer((None, 3, input_height, input_width))
 

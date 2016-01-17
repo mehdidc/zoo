@@ -1,10 +1,10 @@
 import lasagne
 
-#from lasagne.layers import Conv2DLayer as ConvLayer
-#from lasagne.layers import MaxPool2DLayer as MaxPoolLayer
+from lasagne.layers import Conv2DLayer as ConvLayer
+from lasagne.layers import MaxPool2DLayer as MaxPoolLayer
 
-from lasagne.layers.dnn import Conv2DDNNLayer as ConvLayer
-from lasagne.layers.dnn import Pool2DDNNLayer as MaxPoolLayer
+# from lasagne.layers.dnn import Conv2DDNNLayer as ConvLayer
+# from lasagne.layers.dnn import Pool2DDNNLayer as MaxPoolLayer
 
 from lasagnekit.easy import LightweightModel
 
