@@ -98,9 +98,7 @@ from lasagne.layers import NonlinearityLayer
 from lasagne.nonlinearities import softmax, rectify
 
 # NB! from pull request #461 : https://github.com/f0k/Lasagne/blob/98b5581fa830cda3d3f838506ef14e5811a35ef7/lasagne/layers/normalization.py
-#from lasagne.layers import batch_norm
-def batch_norm(x):
-	return x
+from normalization import batch_norm
 
 def build_cnn(input_var=None, n=5):
     
@@ -312,6 +310,9 @@ if __name__ == '__main__':
     from lasagne.layers import get_all_layers
     import residual
     import residualv2
+    import residualv3
+    import residualv4
+
     from hp_toolkit.hp import instantiate_default
 
     cnn = build_cnn(input_var=None, n=5)
@@ -329,3 +330,15 @@ if __name__ == '__main__':
     cnn = cnn.output_layers[0]
     layers = get_all_layers(cnn)
     draw_to_file(layers, "residualv2.svg")
+
+    hp = instantiate_default(residualv3.params)
+    cnn = residualv3.build_model(**hp)
+    cnn = cnn.output_layers[0]
+    layers = get_all_layers(cnn)
+    draw_to_file(layers, "residualv3.svg")
+
+    hp = instantiate_default(residualv4.params)
+    cnn = residualv4.build_model(**hp)
+    cnn = cnn.output_layers[0]
+    layers = get_all_layers(cnn)
+    draw_to_file(layers, "residualv4.svg")

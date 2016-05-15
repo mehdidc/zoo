@@ -5,6 +5,8 @@ from lasagnekit.easy import BatchOptimizer, BatchIterator, get_batch_slice
 from lasagnekit.nnet.capsule import Capsule
 from lasagnekit.easy import iterate_minibatches
 from lasagne import updates
+from lasagnekit.updates import santa_sss
+updates.santa_sss = santa_sss  # NOQA
 import theano
 import theano.tensor as T
 
@@ -74,6 +76,9 @@ if __name__ == "__main__":
     import fully  # NOQA
     import residual  # NOQA
     import residualv2  # NOQA
+    import residualv3  # NOQA
+    import residualv4  # NOQA
+    import residualv5  # NOQA
 
     parser = argparse.ArgumentParser(description='zoo')
     parser.add_argument("--budget-hours",
@@ -91,15 +96,18 @@ if __name__ == "__main__":
         "nin": nin,
         "fully": fully,
         "residual": residual,
-        "residualv2": residualv2
+        "residualv2": residualv2,
+        "residualv3": residualv3,
+        "residualv4": residualv4,
+        "residualv5": residualv5
     }
     args = parser.parse_args()
     model_class = models[args.model]
     budget_sec = args.budget_hours * 3600
     begin = datetime.now()
-    seed = 1234
-    fast_test = args.fast_test
+    seed = np.random.randint(0, 1000000000)
     np.random.seed(seed)
+    fast_test = args.fast_test
     rng = np.random
 
     if args.default_model is True:
@@ -125,13 +133,17 @@ if __name__ == "__main__":
 
     hp = dict(
         learning_rate=Param(initial=0.001, interval=[-4, -2], type='real', scale='log10'),
-        learning_rate_decay=Param(initial=0.98, interval=[0.8, 1], type='real'),
-        learning_rate_decay_method=Param(initial='sqrt', interval=['exp', 'none', 'sqrt', 'lin'], type='choice'),
+        learning_rate_decay=Param(initial=0.05, interval=[0, 0.1], type='real'),
+        learning_rate_decay_method=Param(initial='discrete', interval=['exp', 'none', 'sqrt', 'lin', 'discrete'], type='choice'),
         momentum=Param(initial=0.9, interval=[0.5, 0.99], type='real'),
-        weight_decay=Param(initial=0, interval=[-10, -6], type='real', scale='log10'),
+        #weight_decay=Param(initial=0, interval=[-10, -3], type='real', scale='log10'),
+        weight_decay=make_constant_param(0.),
+        discrete_learning_rate_epsilon=make_constant_param(1e-4),#NEW TO ADD
+        discrete_learning_divide=make_constant_param(10.),
+        l2_decay=Param(initial=0, interval=[-8, -4], type='real', scale='log10'),#NEW TO ADD
         max_epochs=make_constant_param(1000),
         batch_size=Param(initial=32,
-                         interval=[16, 32, 64, 128, 256, 512],
+                         interval=[16, 32, 64, 128],
                          type='choice'),
         patience_nb_epochs=make_constant_param(50),
         valid_ratio=make_constant_param(0.15),
@@ -140,14 +152,14 @@ if __name__ == "__main__":
         patience_check_each=make_constant_param(1),
 
         optimization=Param(initial='adam',
-                           interval=['adam', 'nesterov_momentum', 'adadelta', 'rmsprop'],
+                           interval=['adam', 'nesterov_momentum', 'rmsprop'],
                            type='choice'),
         # data augmentation
         nb_data_augmentation=Param(initial=1, interval=[0, 1, 2, 3, 4], type='choice'),
-        zoom_range=make_constant_param((1.0, 1.2)),
-        rotation_range=make_constant_param((-90, 90)),
-        shear_range=make_constant_param((1, 1.1)),
-        translation_range=make_constant_param((-3, 3)),
+        zoom_range=make_constant_param((1, 1)),
+        rotation_range=make_constant_param((0, 0)),
+        shear_range=make_constant_param((1, 1)),
+        translation_range=make_constant_param((-5, 5)),
         do_flip=make_constant_param(True)
 
     )
@@ -180,12 +192,11 @@ if __name__ == "__main__":
     def evaluate(X, y, batch_size=None):
         if batch_size is None:
             batch_size = hp["batch_size"]
-        accs = []
+        y_pred = []
         for mini_batch in iterate_minibatches(X.shape[0],
                                               batch_size):
-            acc = (nnet.predict(X[mini_batch]) == y[mini_batch]).mean()
-            accs.append(acc)
-        return accs
+            y_pred.extend((nnet.predict(X[mini_batch]) == y[mini_batch]).tolist())
+        return np.mean(y_pred)
 
     class MyBatchOptimizer(BatchOptimizer):
 
@@ -203,17 +214,19 @@ if __name__ == "__main__":
                                                                iter_update_batch)
             duration = (datetime.now() - start).total_seconds()
             status["duration"] = duration
-            accs = evaluate(X_train, y_train)
-            status["accuracy_train"] = np.mean(accs)
-            status["accuracy_train_std"] = np.std(accs)
-            accs = evaluate(X_valid, y_valid)
-            status["accuracy_valid"] = np.mean(accs)
-            status["accuracy_valid_std"] = np.std(accs)
+            acc = evaluate(X_train, y_train, batch_size=self.batch_size_eval)
+            status["accuracy_train"] = acc
+            status["accuracy_train_std"] = 0
+            acc = evaluate(X_valid, y_valid, batch_size=self.batch_size_eval)
+            status["accuracy_valid"] = acc
+            status["accuracy_valid_std"] = 0
 
             status["error_valid"] = 1 - status["accuracy_valid"]
 
             status = self.add_moving_avg("accuracy_train", status)
             status = self.add_moving_var("accuracy_train", status)
+            status = self.add_moving_avg("accuracy_valid", status)
+            status = self.add_moving_var("accuracy_valid", status)
 
             for k, v in status.items():
                 light.append(k, float(v))
@@ -230,6 +243,13 @@ if __name__ == "__main__":
                 new_lr = initial_lr / (1 + t)
             elif lr_decay_method == "sqrt":
                 new_lr = initial_lr / np.sqrt(1 + t)
+            elif lr_decay_method == 'discrete':
+                eps = hp["discrete_learning_rate_epsilon"]
+                div = hp["discrete_learning_divide"]
+                if status["moving_var_accuracy_valid"] <= eps:
+                    new_lr = cur_lr / div
+                else:
+                    new_lr = cur_lr
             else:
                 new_lr = cur_lr
 
@@ -278,8 +298,19 @@ if __name__ == "__main__":
         patience_nb_epochs=hp["patience_nb_epochs"],
         patience_progression_rate_threshold=hp["patience_threshold"],
         patience_check_each=hp["patience_check_each"],
+        verbose_stat_show=[
+            "epoch",
+            "duration",
+            "accuracy_train",
+            "accuracy_train_std",
+            "accuracy_valid",
+            "accuracy_valid_std",
+        ]
     )
+    batch_size_eval = 1024
+    light.set("batch_size_eval", batch_size_eval)
     batch_optimizer.learning_rate = learning_rate
+    batch_optimizer.batch_size_eval = batch_size_eval
 
     input_variables = OrderedDict()
     input_variables["X"] = dict(tensor_type=T.tensor4)
@@ -299,7 +330,13 @@ if __name__ == "__main__":
             l1 = sum(T.abs_(param).sum() for param in model.capsule.all_params_regularizable) * hp["weight_decay"]
         else:
             l1 = 0
-        return T.nnet.categorical_crossentropy(y_hat, y).mean() + l1
+
+        if hp["l2_decay"] > 0:
+            l2 = sum(T.sqr(param).sum() for param in model.capsule.all_params_regularizable) * hp["l2_decay"]
+        else:
+            l2 = 0
+
+        return T.nnet.categorical_crossentropy(y_hat, y).mean() + l1 + l2
 
     batch_iterator = MyBatchIterator(hp["nb_data_augmentation"],
                                      zoom_range=hp["zoom_range"],
@@ -326,10 +363,6 @@ if __name__ == "__main__":
     y = label_encoder.fit_transform(y)
     y = y.astype(np.int32)
 
-    # rescaling to [-1, 1]
-    X_min = X.min(axis=(0, 2, 3))[None, :, None, None]
-    X_max = X.max(axis=(0, 2, 3))[None, :, None, None]
-    X = 2 * ((X - X_min) / (X_max - X_min)) - 1
     X, y = shuffle(X, y)
 
     if fast_test is True:
@@ -337,6 +370,16 @@ if __name__ == "__main__":
         y = y[0:100]
 
     X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=hp["valid_ratio"])
+
+    # rescaling to [-1, 1]
+    X_min = X_train.min(axis=(0, 2, 3))[None, :, None, None]
+    X_max = X_train.max(axis=(0, 2, 3))[None, :, None, None]
+    def preprocess(a):
+        return (a / 255.) * 2 - 1
+        # return 2 * ((a - X_min) / (X_max - X_min)) - 1
+    X_train = preprocess(X_train)
+    X_valid = preprocess(X_valid)
+
     light.set("nb_examples_train", X_train.shape[0])
     light.set("nb_examples_valid", X_valid.shape[0])
     try:
@@ -347,16 +390,15 @@ if __name__ == "__main__":
     imshape = ([data_test.X.shape[0]] +
                list(data_test.img_dim))
     X_test = data_test.X.reshape(imshape).astype(np.float32)
-    X_test = 2 * ((X_test - X_min) / (X_max - X_min)) - 1
+    X_test = preprocess(X_test)
     y_test = data_test.y
     y_test = label_encoder.transform(y_test)
     y_test = y_test.astype(np.int32)
 
-    accs = evaluate(X_test, y_test)
-    m, s = np.mean(accs), np.std(accs)
-    light.set("accuracy_test", m)
-    light.set("accuracy_test_std", s)
-    print("Test accuracy : {}+-{}".format(m, s))
+    acc = evaluate(X_test, y_test, batch_size_eval)
+    light.set("accuracy_test", acc)
+    light.set("accuracy_test_std", 0)
+    print("Test accuracy : {}+-{}".format(acc, 0))
 
     light.endings()  # save the duration
 

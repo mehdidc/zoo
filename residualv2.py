@@ -1,3 +1,4 @@
+# based on residual with HeNormal initialization and strides=1 2 2 instead of 2 2 1
 import lasagne
 from lasagne.layers import Conv2DLayer as ConvLayer
 from lasagne.layers import ElemwiseSumLayer
