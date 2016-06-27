@@ -61,24 +61,26 @@ if __name__ == "__main__":
     from sklearn.utils import shuffle
     from sklearn.cross_validation import train_test_split
     from collections import OrderedDict
-
-    from lightexperiments.light import Light
     from hp_toolkit.hp import (
-            Param, make_constant_param,
-            instantiate_random, instantiate_default
+         Param, make_constant_param,
+         instantiate_random, instantiate_default
     )
     import argparse
-    import vgg  # NOQA
-    import vgg_small  # NOQA
-    import vgg_very_small  # NOQA
-    import spatially_sparse  # NOQA
-    import nin  # NOQA
-    import fully  # NOQA
-    import residual  # NOQA
-    import residualv2  # NOQA
-    import residualv3  # NOQA
-    import residualv4  # NOQA
-    import residualv5  # NOQA
+    from models import vgg  # NOQA
+    from models import vgg_small  # NOQA
+    from models import vgg_very_small  # NOQA
+    from models import spatially_sparse  # NOQA
+    from models import nin  # NOQA
+    from models import fully  # NOQA
+    from models import residual  # NOQA
+    from models import residualv2  # NOQA
+    from models import residualv3  # NOQA
+    from models import residualv4  # NOQA
+    from models import residualv5  # NOQA
+    from lightjob.cli import load_db
+
+    db = load_db()
+    job_content = {}
 
     parser = argparse.ArgumentParser(description='zoo')
     parser.add_argument("--budget-hours",
@@ -115,13 +117,7 @@ if __name__ == "__main__":
     else:
         instantiate = instantiate_random
 
-    light = Light()
-    light.launch()
-    light.initials()
-    light.file_snapshot()
-    light.set_seed(seed)
-    light.tag("deepconvnets")
-    light.tag("zoonormalized")
+    job = {}
 
     data = Cifar10(batch_indexes=[1, 2, 3, 4, 5])
     data.load()
@@ -129,7 +125,7 @@ if __name__ == "__main__":
     data_test = Cifar10(batch_indexes=[6])
     data_test.load()
 
-    light.set("dataset", data.__class__.__name__)
+    job['dataset'] = data.__class__.__name__
 
     hp = dict(
         learning_rate=Param(initial=0.001, interval=[-4, -2], type='real', scale='log10'),
@@ -161,7 +157,6 @@ if __name__ == "__main__":
         shear_range=make_constant_param((1, 1)),
         translation_range=make_constant_param((-5, 5)),
         do_flip=make_constant_param(True)
-
     )
 
     if fast_test is True:
@@ -171,18 +166,18 @@ if __name__ == "__main__":
     if fast_test is True:
         default_params["max_epochs"] = 1
     hp = instantiate(hp, default_params=default_params)
-    light.set("hp", hp)
+    job_content['hp'] = hp
 
     hp_model = model_class.params
     hp_model = instantiate(hp_model)
-    light.set("hp_model", hp_model)
+    job_content['hp_model'] = hp_model
 
     model = model_class.build_model(
         input_width=data.img_dim[1],
         input_height=data.img_dim[2],
         output_dim=data.output_dim,
         **hp_model)
-    light.set("model", model_class.__name__)
+    job_content['model'] = model_class.__name__
     print(model_class.__name__)
     print(json.dumps(hp, indent=4))
     print(json.dumps(hp_model, indent=4))
@@ -229,7 +224,10 @@ if __name__ == "__main__":
             status = self.add_moving_var("accuracy_valid", status)
 
             for k, v in status.items():
-                light.append(k, float(v))
+                if k not in job_content:
+                    job_content[k] = [v]
+                else:
+                    job_content[k].append(v)
 
             lr = self.learning_rate
             lr_decay_method = hp["learning_rate_decay_method"]
@@ -255,9 +253,9 @@ if __name__ == "__main__":
 
             new_lr = np.array(new_lr, dtype="float32")
             lr.set_value(new_lr)
-
-            light.append("learning_rate_per_epoch",
-                         float(self.learning_rate.get_value()))
+            if 'learning_rate_per_epoch' not in job_content:
+                job_content['learning_rate_per_epoch'] = []
+            job_content['learning_rate_per_epoch'].append(float(self.learning_rate.get_value()))
             return status
 
         def add_moving_avg(self, name, status, B=0.9):
@@ -308,7 +306,7 @@ if __name__ == "__main__":
         ]
     )
     batch_size_eval = 1024
-    light.set("batch_size_eval", batch_size_eval)
+    job_content['batch_size_eval'] = batch_size_eval
     batch_optimizer.learning_rate = learning_rate
     batch_optimizer.batch_size_eval = batch_size_eval
 
@@ -380,8 +378,8 @@ if __name__ == "__main__":
     X_train = preprocess(X_train)
     X_valid = preprocess(X_valid)
 
-    light.set("nb_examples_train", X_train.shape[0])
-    light.set("nb_examples_valid", X_valid.shape[0])
+    job_content['nb_examples_train'] = X_train.shape[0]
+    job_content['nb_examples_valid'] = X_valid.shape[0]
     try:
         nnet.fit(X=X_train, y=y_train)
     except KeyboardInterrupt:
@@ -396,12 +394,8 @@ if __name__ == "__main__":
     y_test = y_test.astype(np.int32)
 
     acc = evaluate(X_test, y_test, batch_size_eval)
-    light.set("accuracy_test", acc)
-    light.set("accuracy_test_std", 0)
+    job_content['accuracy_test'] = acc
+    job_content['accuracy_test_std'] = 0
     print("Test accuracy : {}+-{}".format(acc, 0))
-
-    light.endings()  # save the duration
-
     if fast_test is False:
-        light.store_experiment()  # update the DB
-    light.close()
+        db.add_job(job_content)
