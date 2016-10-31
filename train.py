@@ -132,7 +132,6 @@ if __name__ == "__main__":
         learning_rate_decay=Param(initial=0.05, interval=[0, 0.1], type='real'),
         learning_rate_decay_method=Param(initial='discrete', interval=['exp', 'none', 'sqrt', 'lin', 'discrete'], type='choice'),
         momentum=Param(initial=0.9, interval=[0.5, 0.99], type='real'),
-        #weight_decay=Param(initial=0, interval=[-10, -3], type='real', scale='log10'),
         weight_decay=make_constant_param(0.),
         discrete_learning_rate_epsilon=make_constant_param(1e-4),#NEW TO ADD
         discrete_learning_divide=make_constant_param(10.),
@@ -374,7 +373,6 @@ if __name__ == "__main__":
     X_max = X_train.max(axis=(0, 2, 3))[None, :, None, None]
     def preprocess(a):
         return (a / 255.) * 2 - 1
-        # return 2 * ((a - X_min) / (X_max - X_min)) - 1
     X_train = preprocess(X_train)
     X_valid = preprocess(X_valid)
 
